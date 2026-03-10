@@ -62,8 +62,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-games",
         type=int,
-        default=100,
-        help="Maximum number of matched Kalshi games to collect. Defaults to 100.",
+        default=None,
+        help="Maximum number of matched Kalshi games to collect.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Optional cap on number of event-list pages to scan.",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip downloading games that already have a raw Kalshi parquet file.",
     )
     parser.add_argument(
         "--overwrite",
@@ -215,15 +226,33 @@ def fetch_event_detail(event_ticker: str) -> dict[str, Any]:
     return payload
 
 
-def discover_games(games: pd.DataFrame, max_games: int) -> list[dict[str, Any]]:
-    discovered: list[dict[str, Any]] = []
+def discover_games(
+    games: pd.DataFrame,
+    max_games: int | None,
+    max_pages: int | None = None,
+    existing_game_ids: set[str] | None = None,
+    skip_existing: bool = False,
+) -> dict[str, Any]:
+    queued: list[dict[str, Any]] = []
     seen_event_tickers: set[str] = set()
     min_game_date = games["date"].min()
     max_game_date = games["date"].max()
+    pages_scanned = 0
+    events_considered = 0
+    matched_games = 0
+    skipped_existing_count = 0
 
     for status in ("settled",):
         cursor: str | None = None
         while True:
+            if max_pages is not None and pages_scanned >= max_pages:
+                return {
+                    "queued": queued,
+                    "pages_scanned": pages_scanned,
+                    "events_considered": events_considered,
+                    "matched_games": matched_games,
+                    "skipped_existing": skipped_existing_count,
+                }
             params: dict[str, Any] = {
                 "series_ticker": NBA_SERIES_TICKER,
                 "status": status,
@@ -232,11 +261,13 @@ def discover_games(games: pd.DataFrame, max_games: int) -> list[dict[str, Any]]:
             if cursor:
                 params["cursor"] = cursor
             payload = kalshi_request_json(EVENTS_URL, params=params)
+            pages_scanned += 1
             events = payload.get("events") or []
             if not isinstance(events, list) or not events:
                 break
 
             for summary in events:
+                events_considered += 1
                 event_ticker = str(summary.get("event_ticker") or "")
                 if not event_ticker or event_ticker in seen_event_tickers:
                     continue
@@ -244,7 +275,13 @@ def discover_games(games: pd.DataFrame, max_games: int) -> list[dict[str, Any]]:
                 if not pd.isna(max_game_date) and not pd.isna(event_date) and event_date > (max_game_date + pd.Timedelta(days=2)):
                     continue
                 if not pd.isna(min_game_date) and not pd.isna(event_date) and event_date < (min_game_date - pd.Timedelta(days=2)):
-                    return discovered
+                    return {
+                        "queued": queued,
+                        "pages_scanned": pages_scanned,
+                        "events_considered": events_considered,
+                        "matched_games": matched_games,
+                        "skipped_existing": skipped_existing_count,
+                    }
                 detail = fetch_event_detail(event_ticker)
                 teams = extract_event_teams(detail)
                 if teams is None:
@@ -253,7 +290,13 @@ def discover_games(games: pd.DataFrame, max_games: int) -> list[dict[str, Any]]:
                 if not pd.isna(max_game_date) and not pd.isna(event_time) and event_time > (max_game_date + pd.Timedelta(days=2)):
                     continue
                 if not pd.isna(min_game_date) and not pd.isna(event_time) and event_time < (min_game_date - pd.Timedelta(days=2)):
-                    return discovered
+                    return {
+                        "queued": queued,
+                        "pages_scanned": pages_scanned,
+                        "events_considered": events_considered,
+                        "matched_games": matched_games,
+                        "skipped_existing": skipped_existing_count,
+                    }
                 title = (
                     (detail.get("event") or {}).get("title")
                     or summary.get("title")
@@ -264,20 +307,37 @@ def discover_games(games: pd.DataFrame, max_games: int) -> list[dict[str, Any]]:
                 if game_row is None:
                     continue
                 print(f"MATCHED GAME: {game_row['game_id']}")
+                matched_games += 1
                 seen_event_tickers.add(event_ticker)
-                discovered.append(
+                game_id = str(game_row["game_id"])
+                if skip_existing and existing_game_ids and game_id in existing_game_ids:
+                    skipped_existing_count += 1
+                    continue
+                queued.append(
                     {
                         "detail": detail,
                         "game_row": game_row,
                     }
                 )
-                if len(discovered) >= max_games:
-                    return discovered
+                if max_games is not None and len(queued) >= max_games:
+                    return {
+                        "queued": queued,
+                        "pages_scanned": pages_scanned,
+                        "events_considered": events_considered,
+                        "matched_games": matched_games,
+                        "skipped_existing": skipped_existing_count,
+                    }
 
             cursor = payload.get("cursor")
             if not cursor:
                 break
-    return discovered
+    return {
+        "queued": queued,
+        "pages_scanned": pages_scanned,
+        "events_considered": events_considered,
+        "matched_games": matched_games,
+        "skipped_existing": skipped_existing_count,
+    }
 
 
 def fetch_trades_for_market(
@@ -460,13 +520,21 @@ def main() -> None:
     games = load_games(args.game_ids_file)
     ensure_directory(args.output_dir)
     ensure_directory(args.espn_output_dir)
+    existing_game_ids = {path.stem for path in args.output_dir.glob("*.parquet")}
 
-    discovered = discover_games(games=games, max_games=args.max_games)
+    discovery = discover_games(
+        games=games,
+        max_games=args.max_games,
+        max_pages=args.max_pages,
+        existing_game_ids=existing_game_ids,
+        skip_existing=(args.skip_existing and not args.overwrite),
+    )
+    queued = discovery["queued"]
 
     games_downloaded = 0
     total_rows_collected = 0
 
-    for item in discovered:
+    for item in queued:
         detail = item["detail"]
         game_row = item["game_row"]
         output_path = args.output_dir / f"{game_row['game_id']}.parquet"
@@ -482,7 +550,11 @@ def main() -> None:
         games_downloaded += 1
         total_rows_collected += len(frame)
 
-    print(f"games discovered: {len(discovered)}")
+    print(f"pages scanned: {discovery['pages_scanned']}")
+    print(f"events considered: {discovery['events_considered']}")
+    print(f"games discovered: {len(queued)}")
+    print(f"games matched to ESPN: {discovery['matched_games']}")
+    print(f"games skipped existing: {discovery['skipped_existing']}")
     print(f"games downloaded: {games_downloaded}")
     print(f"total rows collected: {total_rows_collected}")
 
