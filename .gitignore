@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Ignore raw datasets
+data/raw/*
+data/processed/*
+
+# Keep only this small file tracked
+!data/raw/game_ids.csv
