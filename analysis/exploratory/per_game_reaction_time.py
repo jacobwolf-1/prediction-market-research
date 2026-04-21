@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from analysis.time_series_utils import (
     build_lag_correlation_table,

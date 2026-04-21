@@ -77,19 +77,36 @@ def collect_kalshi_history(
     kalshi_output_dir: Path,
     espn_output_dir: Path,
     audit_output: Path,
+    selected_game_ids: list[str] | None,
     max_games: int | None,
     max_pages: int | None,
     skip_existing: bool,
     overwrite: bool,
-) -> dict[str, int]:
+) -> dict[str, int | str | bool]:
     games = kalshi_fetch.load_games(game_ids_file)
+    if selected_game_ids is not None:
+        if not selected_game_ids:
+            return {
+                "pages_scanned": 0,
+                "events_considered": 0,
+                "games_discovered": 0,
+                "games_matched": 0,
+                "games_downloaded": 0,
+                "rows_collected": 0,
+                "audit_path": str(audit_output),
+                "audit_refreshed": False,
+            }
+        order = {game_id: index for index, game_id in enumerate(selected_game_ids)}
+        games = games.loc[games["game_id"].astype(str).isin(order)].copy()
+        games["_selected_order"] = games["game_id"].astype(str).map(order)
+        games = games.sort_values("_selected_order").drop(columns="_selected_order").reset_index(drop=True)
     ensure_directory(kalshi_output_dir)
     ensure_directory(espn_output_dir)
     existing_game_ids = {path.stem for path in kalshi_output_dir.glob("*.parquet")}
 
     discovery = kalshi_fetch.discover_games(
         games=games,
-        max_games=max_games,
+        max_games=None if selected_game_ids is not None else max_games,
         max_pages=max_pages,
         existing_game_ids=existing_game_ids,
         skip_existing=(skip_existing and not overwrite),
@@ -120,6 +137,7 @@ def collect_kalshi_history(
         "games_downloaded": int(games_downloaded),
         "rows_collected": int(total_rows_collected),
         "audit_path": str(audit_output),
+        "audit_refreshed": True,
     }
 
 
@@ -127,11 +145,18 @@ def main() -> None:
     args = parse_args()
     game_ids = collect_game_ids(args.seasons, args.game_ids_output, overwrite=args.overwrite)
     espn_written = collect_espn_history(game_ids["game_id"].astype(str).tolist(), args.espn_output_dir, overwrite=args.overwrite)
+    kalshi_selected_game_ids = game_ids["game_id"].astype(str).tolist()
+    if args.skip_existing and not args.overwrite:
+        existing_kalshi_game_ids = {path.stem for path in args.kalshi_output_dir.glob("*.parquet")}
+        kalshi_selected_game_ids = [game_id for game_id in kalshi_selected_game_ids if game_id not in existing_kalshi_game_ids]
+    if args.max_games is not None:
+        kalshi_selected_game_ids = kalshi_selected_game_ids[: args.max_games]
     kalshi_stats = collect_kalshi_history(
         game_ids_file=args.game_ids_output,
         kalshi_output_dir=args.kalshi_output_dir,
         espn_output_dir=args.espn_output_dir,
         audit_output=args.kalshi_audit_output,
+        selected_game_ids=kalshi_selected_game_ids,
         max_games=args.max_games,
         max_pages=args.max_pages,
         skip_existing=args.skip_existing,
@@ -146,7 +171,9 @@ def main() -> None:
     print(f"kalshi games matched: {kalshi_stats['games_matched']}")
     print(f"kalshi games downloaded: {kalshi_stats['games_downloaded']}")
     print(f"kalshi rows collected: {kalshi_stats['rows_collected']}")
-    print(f"kalshi audit saved: {kalshi_stats['audit_path']}")
+    print(
+        f"kalshi audit {'saved' if kalshi_stats['audit_refreshed'] else 'skipped'}: {kalshi_stats['audit_path']}"
+    )
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import pandas as pd
 from tqdm import tqdm
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
     import data_collection.espn_historical_fetch as espn_historical_fetch
 else:
     from data_collection import espn_historical_fetch

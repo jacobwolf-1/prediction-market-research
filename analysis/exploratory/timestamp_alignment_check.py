@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from analysis.raw_time_dataset import load_raw_time_dataset
 from utils.ingestion_utils import PROJECT_ROOT, RAW_DIR, ensure_directory

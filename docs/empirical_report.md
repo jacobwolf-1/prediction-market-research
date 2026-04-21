@@ -22,9 +22,14 @@ The large raw and processed datasets are intentionally gitignored because they a
 1. Fetch ESPN game IDs and raw event histories.
 2. Discover Kalshi NBA events, extract teams from market metadata or tickers, and match them to ESPN games using team overlap and date proximity.
 3. Build merged game-level datasets and resampled lead-lag inputs.
-4. Run descriptive lead-lag tests, event-study style plots, and simple backtests on the matched sample.
+4. Run descriptive lead-lag tests and simple backtests on the matched sample.
 
 This is a matched-sample study. It is not a venue-wide census of all NBA markets and it is not evidence of stable performance across all Kalshi eras.
+
+For the public artifact:
+
+- `pipeline/run_smoke_test.py` provides a synthetic smoke-test path from a fresh clone.
+- `pipeline/run_full_pipeline.py` is the canonical end-to-end entrypoint for rebuilding the matched-sample dataset when the external sources are available.
 
 ## Outputs Produced
 
@@ -59,7 +64,6 @@ These findings support a careful framing: the project demonstrates nontrivial co
 
 ## Next Work
 
-- Add a manifest-driven pipeline runner so the full analysis can be reproduced from one documented command sequence.
-- Commit or publish a small, sanitized sample dataset for faster public smoke tests.
-- Expand test coverage around dataset-building scripts and audit summaries.
-- Separate exploratory scripts further from the canonical pipeline entrypoints.
+- Expand smoke fixtures if additional public validation paths become useful.
+- Add more integration tests around report tables and audit summaries.
+- Keep exploratory scripts isolated from the canonical pipeline as the repo evolves.
