@@ -14,7 +14,7 @@ if __package__ in {None, ""}:
 else:
     from data_collection import espn_historical_fetch, fetch_game_ids, kalshi_fetch
 
-from utils.ingestion_utils import RAW_DIR, ensure_directory, write_parquet
+from utils.ingestion_utils import DATA_DIR, RAW_DIR, ensure_directory, write_parquet
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument(
+        "--kalshi-audit-output",
+        type=Path,
+        default=DATA_DIR / "processed" / "kalshi_discovery_audit.csv",
+    )
     return parser.parse_args()
 
 
@@ -71,6 +76,7 @@ def collect_kalshi_history(
     game_ids_file: Path,
     kalshi_output_dir: Path,
     espn_output_dir: Path,
+    audit_output: Path,
     max_games: int | None,
     max_pages: int | None,
     skip_existing: bool,
@@ -88,6 +94,7 @@ def collect_kalshi_history(
         existing_game_ids=existing_game_ids,
         skip_existing=(skip_existing and not overwrite),
     )
+    kalshi_fetch.write_discovery_audit(discovery["audit_rows"], audit_output)
 
     games_downloaded = 0
     total_rows_collected = 0
@@ -112,6 +119,7 @@ def collect_kalshi_history(
         "games_matched": int(discovery["matched_games"]),
         "games_downloaded": int(games_downloaded),
         "rows_collected": int(total_rows_collected),
+        "audit_path": str(audit_output),
     }
 
 
@@ -123,6 +131,7 @@ def main() -> None:
         game_ids_file=args.game_ids_output,
         kalshi_output_dir=args.kalshi_output_dir,
         espn_output_dir=args.espn_output_dir,
+        audit_output=args.kalshi_audit_output,
         max_games=args.max_games,
         max_pages=args.max_pages,
         skip_existing=args.skip_existing,
@@ -137,6 +146,7 @@ def main() -> None:
     print(f"kalshi games matched: {kalshi_stats['games_matched']}")
     print(f"kalshi games downloaded: {kalshi_stats['games_downloaded']}")
     print(f"kalshi rows collected: {kalshi_stats['rows_collected']}")
+    print(f"kalshi audit saved: {kalshi_stats['audit_path']}")
 
 
 if __name__ == "__main__":

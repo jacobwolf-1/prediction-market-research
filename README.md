@@ -154,21 +154,67 @@ python analysis/timestamp_alignment_check.py
 python analysis/control_drift_test.py
 python analysis/shock_reaction_curve.py
 python analysis/shock_strategy_robustness.py
-python analysis/shock_strategy_train_test.py
+python analysis/shock_strategy_train_test.py --train-seasons 2025 --test-seasons 2026
+python analysis/shock_strategy_cv.py
+python analysis/kalshi_discovery_audit_summary.py
+python analysis/kalshi_coverage_summary.py
 ```
 
-## Current State
+## Main Results
+
+Current primary seasonal validation:
+
+- Train season: `2025`
+- Test season: `2026`
+- Best train configuration: `threshold=0.05`, `horizon=30s`
+- Test trades: `7659`
+- Test total PnL: `67.12`
+- Test average return: `0.008764`
+- Test win rate: `0.569918`
+
+Primary output files:
+
+- [merged_games.parquet](/Users/jacobwolf/prediction-market-research/data/processed/merged_games.parquet:1)
+- [shock_train_test_results.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_train_test_results.csv:1)
+- [shock_train_test_diagnostics.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_train_test_diagnostics.csv:1)
+- [shock_backtest_results.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_backtest_results.csv:1)
+
+## Final Project Status
 
 The repo already contains generated plots and intermediate outputs from prior runs, plus a current summary in [current_empirical_report.md](/Users/jacobwolf/prediction-market-research/current_empirical_report.md:1).
 
-As of that report:
+The repo is best understood as a matched-sample study rather than a broad multi-season historical study.
 
-- the matched Kalshi sample is still small relative to the intended multi-season scope
-- the raw-time analyses suggest ESPN shocks lead Kalshi updates on the currently matched sample
-- broader out-of-sample validation is still incomplete because historical market coverage has not expanded enough yet
+What the repo now demonstrates:
+
+- the raw-time analyses suggest ESPN shocks lead Kalshi updates on the matched sample
+- the expanded matched sample now supports a concrete `2025 -> 2026` seasonal train/test path
+- pooled backtests and seasonal holdout results are directionally consistent on the current matched sample
+- Kalshi audit and coverage scripts make the sample construction transparent and reproducible
+
+Validation paths:
+
+- Primary: `2025 -> 2026` seasonal train/test via `analysis/shock_strategy_train_test.py`
+- Fallback: leave-one-game-out CV via `analysis/shock_strategy_cv.py`
+  For quick smoke checks on large local datasets, use `--max-held-out-games 1` or a similarly small value.
+
+What the repo does not claim:
+
+- it is not a broad `2022-2025` persistence study
+- it does not establish that the signal survives across all historical Kalshi eras
+- it should not be framed as venue-wide or market-wide external validity beyond the matched sample
 
 ## Notes
 
 - Most scripts assume data lives in the default project directories from `utils/ingestion_utils.py`.
 - The code writes parquet outputs aggressively; `--overwrite` is available on most collection scripts if you want to rebuild from scratch.
+- Kalshi collection now writes a discovery audit CSV by default to `data/processed/kalshi_discovery_audit.csv` so unmatched events can be inspected.
+- `analysis/kalshi_discovery_audit_summary.py` turns that audit into reason-level and season-level summary tables, example rows per rejection reason, and nearest plausible ESPN game candidates for failures.
+- `analysis/kalshi_coverage_summary.py` prints the current Kalshi coverage plus deltas versus the last checkpoint in one command.
+- `analysis/shock_strategy_train_test.py` now prints season-by-season usable coverage and writes `data/processed/shock_train_test_diagnostics.csv` before evaluating a requested split.
+- `analysis/shock_strategy_cv.py` remains the fallback validation path; on large local samples you can use `--max-held-out-games` for a bounded smoke run before a full CV sweep.
+- Key audit outputs:
+  [kalshi_discovery_audit.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_discovery_audit.csv:1),
+  [kalshi_audit_reason_summary.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_audit_reason_summary.csv:1),
+  [kalshi_audit_season_totals.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_audit_season_totals.csv:1)
 - `scripts/pm_viability_test.py` is an older exploratory Polymarket-only script and is not part of the main pipeline.
