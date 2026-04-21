@@ -139,8 +139,16 @@ def parse_json_field(value: Any) -> Any:
     return value
 
 
-def normalize_text(value: str | None) -> str:
-    return " ".join((value or "").lower().replace("'", "").replace(".", "").split())
+def normalize_text(value: Any) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = value
+    elif pd.isna(value):
+        text = ""
+    else:
+        text = str(value)
+    return " ".join(text.lower().replace("'", "").replace(".", "").split())
 
 
 def team_aliases(*values: str | None) -> set[str]:

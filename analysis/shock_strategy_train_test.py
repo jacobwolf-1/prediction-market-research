@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
 from analysis.backtest_shock_strategy import HORIZONS_SECONDS, SHOCK_THRESHOLDS, prepare_shock_frame, simulate_trades, summarize_strategy
 from analysis.raw_time_utils import frequency_to_seconds, normalize_frequency_label
 from analysis.shock_strategy_utils import build_shock_groups, filter_groups_by_liquidity
-from utils.ingestion_utils import DATA_DIR, RAW_DIR, load_game_ids
+from utils.ingestion_utils import DATA_DIR, RAW_DIR, ensure_directory, load_game_ids
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,10 +22,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--game-ids-file", type=Path, default=RAW_DIR / "game_ids.csv")
     parser.add_argument("--freq", default="1s")
     parser.add_argument("--min-market-updates-per-minute", type=float, default=None)
+    parser.add_argument("--train-seasons", nargs="+", type=int, default=[2025])
+    parser.add_argument("--test-seasons", nargs="+", type=int, default=[2026])
     parser.add_argument(
         "--output-csv",
         type=Path,
         default=DATA_DIR / "processed" / "shock_train_test_results.csv",
+    )
+    parser.add_argument(
+        "--diagnostics-csv",
+        type=Path,
+        default=DATA_DIR / "processed" / "shock_train_test_diagnostics.csv",
     )
     return parser.parse_args()
 
@@ -47,6 +54,53 @@ def evaluate_grid(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[tuple[float, 
     return pd.DataFrame(rows), trades_by_key
 
 
+def build_split_diagnostics(
+    frame: pd.DataFrame,
+    train_seasons: list[int],
+    test_seasons: list[int],
+    feasible: bool,
+    reason: str,
+) -> pd.DataFrame:
+    season_rows = (
+        frame.groupby("season", dropna=False)
+        .agg(
+            rows=("game_id", "size"),
+            games=("game_id", pd.Series.nunique),
+            teams=("team", "nunique"),
+        )
+        .reset_index()
+        .rename(columns={"season": "bucket"})
+    )
+    season_rows["bucket"] = season_rows["bucket"].astype("Int64").astype(str).replace("<NA>", "unknown")
+    season_rows["section"] = "season_coverage"
+
+    train = frame.loc[frame["season"].isin(train_seasons)].copy()
+    test = frame.loc[frame["season"].isin(test_seasons)].copy()
+    split_rows = pd.DataFrame(
+        [
+            {
+                "section": "split_summary",
+                "bucket": "train",
+                "rows": int(len(train)),
+                "games": int(train["game_id"].nunique()) if not train.empty else 0,
+                "teams": int(train[["game_id", "team"]].drop_duplicates().shape[0]) if not train.empty else 0,
+                "feasible": feasible,
+                "reason": reason,
+            },
+            {
+                "section": "split_summary",
+                "bucket": "test",
+                "rows": int(len(test)),
+                "games": int(test["game_id"].nunique()) if not test.empty else 0,
+                "teams": int(test[["game_id", "team"]].drop_duplicates().shape[0]) if not test.empty else 0,
+                "feasible": feasible,
+                "reason": reason,
+            },
+        ]
+    )
+    return pd.concat([season_rows, split_rows], ignore_index=True, sort=False)
+
+
 def main() -> None:
     args = parse_args()
     frequency = normalize_frequency_label(args.freq)
@@ -59,14 +113,30 @@ def main() -> None:
 
     frame = prepare_shock_frame(groups, frequency_seconds)
     frame = attach_season(frame, args.game_ids_file)
+    season_counts = (
+        frame.groupby("season", dropna=False)
+        .agg(rows=("game_id", "size"), games=("game_id", pd.Series.nunique), teams=("team", "nunique"))
+        .reset_index()
+    )
+    print("season coverage")
+    print(season_counts.to_string(index=False))
 
-    train = frame.loc[frame["season"].isin([2021, 2022, 2023])].copy()
-    test = frame.loc[frame["season"].isin([2024, 2025])].copy()
+    train = frame.loc[frame["season"].isin(args.train_seasons)].copy()
+    test = frame.loc[frame["season"].isin(args.test_seasons)].copy()
 
-    if train.empty or test.empty:
+    feasible = (not train.empty) and (not test.empty)
+    reason = "ok" if feasible else "insufficient_rows_in_requested_split"
+    diagnostics = build_split_diagnostics(frame, args.train_seasons, args.test_seasons, feasible=feasible, reason=reason)
+    ensure_directory(args.diagnostics_csv.parent)
+    diagnostics.to_csv(args.diagnostics_csv, index=False)
+
+    if not feasible:
         print("Insufficient season coverage for train/test split.")
+        print(f"train_seasons: {args.train_seasons}")
+        print(f"test_seasons: {args.test_seasons}")
         print(f"train_rows: {len(train)}")
         print(f"test_rows: {len(test)}")
+        print(f"diagnostics saved to: {args.diagnostics_csv}")
         return
 
     train_results, _ = evaluate_grid(train)
@@ -78,14 +148,16 @@ def main() -> None:
 
     output = pd.DataFrame(
         [
-            {"split": "train_best", **best_train.to_dict()},
-            {"split": "test_fixed", **test_summary},
+            {"split": "train_best", "seasons": ",".join(map(str, args.train_seasons)), **best_train.to_dict()},
+            {"split": "test_fixed", "seasons": ",".join(map(str, args.test_seasons)), **test_summary},
         ]
     )
+    ensure_directory(args.output_csv.parent)
     output.to_csv(args.output_csv, index=False)
 
     print(output.to_string(index=False))
     print(f"output saved to: {args.output_csv}")
+    print(f"diagnostics saved to: {args.diagnostics_csv}")
 
 
 if __name__ == "__main__":
