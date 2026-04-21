@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from data_collection.kalshi_fetch import extract_event_teams, parse_event_ticker_date
 

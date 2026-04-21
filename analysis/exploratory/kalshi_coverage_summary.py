@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from utils.ingestion_utils import DATA_DIR, RAW_DIR
 

@@ -16,6 +16,7 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+artifacts/
 
 # Ignore generated datasets by default
 data/raw/*

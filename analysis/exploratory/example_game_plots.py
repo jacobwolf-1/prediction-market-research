@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from analysis.time_series_utils import load_lead_lag_datasets
 from utils.ingestion_utils import PROCESSED_DIR, PROJECT_ROOT, RAW_DIR, ensure_directory

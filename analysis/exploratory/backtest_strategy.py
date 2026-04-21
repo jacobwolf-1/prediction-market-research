@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from analysis.raw_time_utils import build_raw_time_groups, frequency_to_seconds, normalize_frequency_label
 from utils.ingestion_utils import DATA_DIR, PROJECT_ROOT, RAW_DIR, ensure_directory

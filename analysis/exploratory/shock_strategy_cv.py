@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 if __package__ in {None, ""}:
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from analysis.backtest_shock_strategy import HORIZONS_SECONDS, SHOCK_THRESHOLDS, prepare_shock_frame, simulate_trades, summarize_strategy
 from analysis.raw_time_utils import frequency_to_seconds, normalize_frequency_label
