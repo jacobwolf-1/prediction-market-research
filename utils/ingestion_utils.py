@@ -209,6 +209,6 @@ def probability_columns_valid(frame: pd.DataFrame, columns: list[str]) -> None:
 def timestamps_monotonic(frame: pd.DataFrame, timestamp_column: str = "timestamp") -> None:
     if timestamp_column not in frame.columns:
         return
-    ordered = frame.sort_values(timestamp_column)
-    if not ordered[timestamp_column].is_monotonic_increasing:
+    series = frame[timestamp_column].dropna()
+    if not series.is_monotonic_increasing:
         raise ValueError(f"{timestamp_column} must be monotonic increasing")
