@@ -2,7 +2,7 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
-
+.env
 # Ignore raw datasets
 data/raw/*
 data/processed/*
