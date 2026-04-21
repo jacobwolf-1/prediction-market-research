@@ -1,39 +1,52 @@
 # Prediction Market Research
 
-Research code for testing whether live sports information from ESPN leads prediction-market prices in NBA winner markets, with a focus on Kalshi and some Polymarket ingestion utilities.
+Research code for an NBA prediction-market study asking whether live ESPN game information appears to lead Kalshi NBA winner-market prices on the subset of games where both series can be matched.
 
-The repository does three main things:
+## Current Status
 
-1. Collect historical NBA game metadata and event-level win probability series from ESPN.
-2. Collect per-game market history from Kalshi and Polymarket, then align those series with ESPN timestamps.
-3. Run lead-lag, event-study, and backtest analyses, and save plots/results under `visualizations/` and `data/processed/`.
+This repository is now structured as a public research artifact rather than a private working directory:
 
-## Repository Layout
+- The main collection and analysis scripts are present and runnable.
+- A focused `pytest` suite covers deterministic normalization, matching, parsing, and resampling helpers.
+- GitHub Actions CI runs the test suite on Python 3.12.
+- The README and report only make claims tied to files that exist in this working tree.
 
-`data_collection/`
-Scripts for fetching game IDs and raw historical data from ESPN, Kalshi, and Polymarket.
+What is still incomplete:
 
-`analysis/`
-Dataset builders, lead-lag tests, event studies, robustness checks, and strategy backtests.
+- A fresh clone does not include the large raw and processed datasets because they are intentionally gitignored.
+- Some analysis outputs can only be regenerated if the source APIs still return compatible historical data.
+- The repo still contains a few exploratory scripts and notes that are not part of the canonical pipeline.
 
-`utils/`
-Shared ingestion and timestamp/probability normalization helpers.
+## Research Question
 
-`data/raw/`
-Raw inputs such as `game_ids.csv` plus per-game parquet outputs under source-specific folders like `espn/`, `kalshi/`, and `polymarket/`.
+Primary question: when ESPN updates live NBA win probabilities, do Kalshi NBA winner markets react with a measurable delay on the matched sample available in this repository?
 
-`data/processed/`
-Derived datasets and tabular analysis outputs.
+Working hypothesis: if ESPN updates arrive before Kalshi market prices fully adjust, then aligned ESPN probability shocks should be associated with short-horizon Kalshi moves in the same direction.
 
-`visualizations/`
-Saved charts from the analysis scripts.
+This project does **not** claim broad external validity beyond the matched sample currently available here.
 
-`current_empirical_report.md`
-Short write-up of the current matched-sample findings and caveats.
+## Data Sources
 
-## Environment Setup
+- ESPN live game and win-probability history, collected with `data_collection/espn_historical_fetch.py`
+- Kalshi NBA winner-market history, collected with `data_collection/kalshi_fetch.py`
+- Polymarket collection utilities retained as exploratory side work, not part of the main documented pipeline
+- Seed NBA game metadata in `data/raw/game_ids.csv`
 
-This repo uses plain Python scripts rather than a package manager.
+## Repository Structure
+
+```text
+analysis/          Analysis scripts, dataset builders, diagnostics, and backtests
+data/              Seed inputs plus ignored raw/processed outputs generated locally
+data_collection/   ESPN, Kalshi, and Polymarket collection scripts
+data_processing/   Reserved for lightweight processing utilities
+docs/              Empirical report and small committed result snapshots
+scripts/           Older exploratory or smoke-test scripts
+tests/             Pytest suite for deterministic helpers
+utils/             Shared ingestion and normalization helpers
+visualizations/    Committed plot artifacts from prior analysis runs
+```
+
+## Setup
 
 ```bash
 python3 -m venv venv
@@ -41,180 +54,117 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Core dependencies:
-
-- `pandas`
-- `numpy`
-- `pyarrow`
-- `requests`
-- `tqdm`
-- `python-dotenv`
-
-## Data Pipeline
-
-### 1. Fetch NBA game IDs
-
-Build a base table of ESPN game IDs for one or more seasons:
+Optional environment file:
 
 ```bash
-python data_collection/fetch_game_ids.py --seasons 2023 2024 2025
+cp .env.example .env
 ```
 
-This writes `data/raw/game_ids.csv`.
+`ODDS_API_KEY` is included only as a placeholder for older experiments. The main ESPN/Kalshi pipeline does not currently require environment variables.
 
-### 2. Fetch raw ESPN and Kalshi history
+## Reproducibility Notes
 
-Collect the full matched-history inputs in one pass:
+- `requirements.txt` is pinned to the versions used for this cleanup pass.
+- `.env` is ignored and a placeholder `.env.example` is included.
+- `data/raw/` and `data/processed/` are ignored by default because the local datasets are large.
+- Committed result snapshots in `docs/results/` summarize a local run state from April 21, 2026.
+- If a required source dataset is absent in a fresh clone, regenerate it with the commands below instead of assuming it is bundled with the repo.
+
+## How To Run The Pipeline
+
+### 1. Build the seed game list
+
+```bash
+python data_collection/fetch_game_ids.py --seasons 2023 2024 2025 2026
+```
+
+### 2. Collect raw ESPN and Kalshi histories
 
 ```bash
 python data_collection/collect_multi_season_history.py \
-  --seasons 2023 2024 2025 \
+  --seasons 2023 2024 2025 2026 \
   --skip-existing
 ```
 
-Outputs:
-
-- `data/raw/espn/game_<game_id>_espn.parquet`
-- `data/raw/kalshi/<game_id>.parquet`
-
-You can also run the source-specific collectors directly:
+Or run the collectors individually:
 
 ```bash
 python data_collection/espn_historical_fetch.py --game-ids-file data/raw/game_ids.csv
 python data_collection/kalshi_fetch.py --game-ids-file data/raw/game_ids.csv --skip-existing
-python data_collection/polymarket_fetch.py --game-ids-file data/raw/game_ids.csv
 ```
 
 ### 3. Build aligned datasets
 
-For the merge-asof lead-lag dataset:
-
 ```bash
 python analysis/build_lead_lag_dataset.py --market-source kalshi
-```
-
-This writes per-game files under `data/processed/lead_lag_dataset/`.
-
-For the raw-time merged dataset used by the newer strategy and timestamp diagnostics:
-
-```bash
 python analysis/rebuild_merged_dataset.py --freq 1s
 ```
 
-This writes `data/processed/merged_games.parquet`.
-
-## Main Analyses
-
-### Lead-lag tests
-
-Merge-asof lead-lag test:
-
-```bash
-python analysis/lead_lag_test.py
-```
-
-Time-resampled lead-lag test:
+### 4. Run the main analyses
 
 ```bash
 python analysis/time_lead_lag_test.py --resample-frequency 1s --max-lag-seconds 60
-```
-
-Independent raw-time lead-lag test:
-
-```bash
 python analysis/raw_time_lead_lag_test.py --freq 1s --max-lag-seconds 60
-```
-
-### Strategy backtests
-
-Simple spread strategy on raw ESPN vs Kalshi differences:
-
-```bash
-python analysis/backtest_strategy.py --freq 1s
-```
-
-Shock-following strategy:
-
-```bash
 python analysis/backtest_shock_strategy.py --freq 1s
-```
-
-Optional liquidity filter:
-
-```bash
-python analysis/backtest_shock_strategy.py --freq 1s --min-market-updates-per-minute 1.0
-```
-
-### Additional diagnostics and robustness checks
-
-Examples from the current workflow:
-
-```bash
-python analysis/timestamp_alignment_check.py
-python analysis/control_drift_test.py
-python analysis/shock_reaction_curve.py
-python analysis/shock_strategy_robustness.py
 python analysis/shock_strategy_train_test.py --train-seasons 2025 --test-seasons 2026
-python analysis/shock_strategy_cv.py
 python analysis/kalshi_discovery_audit_summary.py
-python analysis/kalshi_coverage_summary.py
 ```
 
-## Main Results
+## What Outputs Currently Exist
 
-Current primary seasonal validation:
+Committed artifacts in the repo:
 
-- Train season: `2025`
-- Test season: `2026`
-- Best train configuration: `threshold=0.05`, `horizon=30s`
-- Test trades: `7659`
-- Test total PnL: `67.12`
-- Test average return: `0.008764`
-- Test win rate: `0.569918`
+- `visualizations/` contains 34 PNG figures from prior analysis runs.
+- `docs/empirical_report.md` summarizes the current evidence conservatively.
+- `docs/results/` contains small committed CSV snapshots derived from local generated outputs.
+- `data/raw/game_ids.csv` is the committed seed metadata file.
 
-Primary output files:
+Generated locally but not committed by default:
 
-- [merged_games.parquet](/Users/jacobwolf/prediction-market-research/data/processed/merged_games.parquet:1)
-- [shock_train_test_results.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_train_test_results.csv:1)
-- [shock_train_test_diagnostics.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_train_test_diagnostics.csv:1)
-- [shock_backtest_results.csv](/Users/jacobwolf/prediction-market-research/data/processed/shock_backtest_results.csv:1)
+- `data/raw/espn/*.parquet`
+- `data/raw/kalshi/*.parquet`
+- `data/raw/polymarket/*.parquet`
+- `data/processed/*.csv`
+- `data/processed/*.parquet`
 
-## Final Project Status
+Because those generated datasets are ignored, a fresh clone should be assumed to have the code and documentation, not the full historical output bundle.
 
-The repo already contains generated plots and intermediate outputs from prior runs, plus a current summary in [current_empirical_report.md](/Users/jacobwolf/prediction-market-research/current_empirical_report.md:1).
+## Claims Supported By Current Artifacts
 
-The repo is best understood as a matched-sample study rather than a broad multi-season historical study.
+The current artifacts support the following restrained claims:
 
-What the repo now demonstrates:
+- The repo contains real data collection code for ESPN and Kalshi historical series.
+- The project includes nontrivial team extraction and matching logic, plus audit outputs for unmatched Kalshi events.
+- The committed plots and result snapshots support describing this as a matched-sample lead-lag study.
+- The committed train/test snapshot documents one feasible `2025 -> 2026` seasonal split on the local matched sample.
 
-- the raw-time analyses suggest ESPN shocks lead Kalshi updates on the matched sample
-- the expanded matched sample now supports a concrete `2025 -> 2026` seasonal train/test path
-- pooled backtests and seasonal holdout results are directionally consistent on the current matched sample
-- Kalshi audit and coverage scripts make the sample construction transparent and reproducible
+The current artifacts do **not** support stronger claims such as:
 
-Validation paths:
+- stable profitability across all seasons
+- venue-wide persistence across all Kalshi NBA history
+- robustness beyond the matched sample currently available here
+- generalizable production trading performance
 
-- Primary: `2025 -> 2026` seasonal train/test via `analysis/shock_strategy_train_test.py`
-- Fallback: leave-one-game-out CV via `analysis/shock_strategy_cv.py`
-  For quick smoke checks on large local datasets, use `--max-held-out-games 1` or a similarly small value.
+## Limitations
 
-What the repo does not claim:
+- Coverage is constrained by the overlap between ESPN historical availability and Kalshi event discovery/matching.
+- The matched sample is incomplete and uneven across seasons.
+- Some plots are committed, but many large intermediate tables are intentionally not.
+- The Polymarket scripts are exploratory and should not be treated as part of the main empirical pipeline.
 
-- it is not a broad `2022-2025` persistence study
-- it does not establish that the signal survives across all historical Kalshi eras
-- it should not be framed as venue-wide or market-wide external validity beyond the matched sample
+## Tests And CI
 
-## Notes
+Run the local test suite with:
 
-- Most scripts assume data lives in the default project directories from `utils/ingestion_utils.py`.
-- The code writes parquet outputs aggressively; `--overwrite` is available on most collection scripts if you want to rebuild from scratch.
-- Kalshi collection now writes a discovery audit CSV by default to `data/processed/kalshi_discovery_audit.csv` so unmatched events can be inspected.
-- `analysis/kalshi_discovery_audit_summary.py` turns that audit into reason-level and season-level summary tables, example rows per rejection reason, and nearest plausible ESPN game candidates for failures.
-- `analysis/kalshi_coverage_summary.py` prints the current Kalshi coverage plus deltas versus the last checkpoint in one command.
-- `analysis/shock_strategy_train_test.py` now prints season-by-season usable coverage and writes `data/processed/shock_train_test_diagnostics.csv` before evaluating a requested split.
-- `analysis/shock_strategy_cv.py` remains the fallback validation path; on large local samples you can use `--max-held-out-games` for a bounded smoke run before a full CV sweep.
-- Key audit outputs:
-  [kalshi_discovery_audit.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_discovery_audit.csv:1),
-  [kalshi_audit_reason_summary.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_audit_reason_summary.csv:1),
-  [kalshi_audit_season_totals.csv](/Users/jacobwolf/prediction-market-research/data/processed/kalshi_audit_season_totals.csv:1)
-- `scripts/pm_viability_test.py` is an older exploratory Polymarket-only script and is not part of the main pipeline.
+```bash
+python -m pytest
+```
+
+CI lives in `.github/workflows/ci.yml` and runs the same test command on GitHub Actions.
+
+## Next Steps
+
+- Add a single manifest-driven pipeline command for end-to-end regeneration.
+- Publish a small sample dataset for smoke tests in fresh clones.
+- Expand tests to dataset-building scripts and summary tables.
+- Further separate exploratory scripts from the canonical pipeline.

@@ -3,9 +3,23 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
-# Ignore raw datasets
+
+# Python caches and test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / notebook junk
+.ipynb_checkpoints/
+.idea/
+.vscode/
+*.swp
+
+# Ignore generated datasets by default
 data/raw/*
 data/processed/*
 
-# Keep only this small file tracked
+# Keep the lightweight seed file tracked
 !data/raw/game_ids.csv

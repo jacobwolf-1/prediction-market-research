@@ -1,0 +1,5 @@
+bucket,rows,games,teams,section,feasible,reason
+2025,1110278,68,17,season_coverage,,
+2026,3507013,244,24,season_coverage,,
+train,1110278,68,124,split_summary,True,ok
+test,3507013,244,426,split_summary,True,ok
