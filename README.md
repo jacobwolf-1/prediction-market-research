@@ -1,8 +1,14 @@
 # Prediction Market Research
 
+[![CI](https://github.com/jacobwolf-1/prediction-market-research/actions/workflows/ci.yml/badge.svg)](https://github.com/jacobwolf-1/prediction-market-research/actions/workflows/ci.yml)
+
 Matched-sample research code for an NBA market microstructure study: on games where both data sources can be aligned, do live ESPN win-probability updates appear to lead Kalshi NBA winner-market prices over short horizons?
 
 This repository is a research workflow, not a claim of deployable trading alpha. The evidence here is limited to the matched sample that can be collected and aligned with the included code.
+
+![Raw-time cross-correlation of ESPN win-probability changes vs. Kalshi price changes on the matched sample; correlation peaks at small positive lags](visualizations/raw_time_lead_lag_curve.png)
+
+*Cross-correlation of ESPN win-probability changes against Kalshi price changes on the matched sample. The peak just right of lag 0 is consistent with ESPN updates leading Kalshi by a few seconds. Magnitudes are small; this is a descriptive result on an incomplete, uneven sample, not a profitability claim. See [`docs/empirical_report.md`](docs/empirical_report.md) for methodology, metric definitions, the transaction-cost model, and caveats.*
 
 ## Scope And Non-Claims
 

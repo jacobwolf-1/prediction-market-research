@@ -25,6 +25,11 @@ from utils.ingestion_utils import DATA_DIR, PROJECT_ROOT, RAW_DIR, ensure_direct
 
 SHOCK_THRESHOLDS = [0.03, 0.05, 0.08]
 HORIZONS_SECONDS = [5, 10, 20, 30]
+# Flat per-side execution cost in probability points (Kalshi contracts settle at
+# $1, so 0.01 == 1 cent per contract). `net_return` subtracts 2 * TRADE_COST for
+# a round trip. This is a single constant stand-in for half-spread + fees; it
+# does NOT model the live bid/ask spread, order-book depth, market impact, or
+# fill probability. See docs/empirical_report.md for the cost model's limits.
 TRADE_COST = 0.01
 
 
@@ -207,6 +212,20 @@ def simulate_trades(frame: pd.DataFrame, threshold: float, horizon: int) -> tupl
 
 
 def sharpe_ratio(returns: pd.Series) -> float:
+    """Return sqrt(N) * mean(returns) / std(returns) over per-trade net returns.
+
+    IMPORTANT: despite the historical name, this is NOT a conventional
+    annualized Sharpe ratio. It is the one-sample t-statistic of the mean
+    per-trade net return against zero (mean / (std / sqrt(N))). It has no
+    risk-free rate and no annualization, and — unlike a real Sharpe — it grows
+    with the sqrt of the number of trades, so it inflates on large, clustered
+    trade samples. It also treats trades as i.i.d.; because signals cluster
+    within a game/team, the effective sample size is smaller than N and this
+    statistic overstates significance. See docs/empirical_report.md
+    ("Backtest metrics, transaction costs, and statistical caveats"). A future
+    revision should rename this to ``mean_return_tstat`` and regenerate the
+    committed snapshots.
+    """
     if len(returns) < 2:
         return float("nan")
     std = float(returns.std(ddof=1))
