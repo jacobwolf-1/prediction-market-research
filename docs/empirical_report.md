@@ -55,6 +55,84 @@ Generated-but-ignored outputs used to produce the snapshots:
 
 These findings support a careful framing: the project demonstrates nontrivial collection, matching, and analysis infrastructure, plus a matched-sample empirical workflow. They do not justify broad claims about generalizable trading profitability or persistent lead-lag effects across all seasons or venues.
 
+## Backtest Metrics, Transaction Costs, And Statistical Caveats
+
+The shock-following backtest (`analysis/backtest_shock_strategy.py`, reused by
+`analysis/shock_strategy_train_test.py`) reports the following, so their exact
+meaning should not be over-read.
+
+### The `sharpe` column is a t-statistic, not a Sharpe ratio
+
+The column labeled `sharpe` in `docs/results/shock_train_test_results_snapshot.csv`
+is computed as `sqrt(N) * mean(net_return) / std(net_return)` over the per-trade
+net-return series. That expression is the **one-sample t-statistic** of the mean
+per-trade return against zero, i.e. `mean / (std / sqrt(N))`. It is **not** a
+conventional Sharpe ratio: it has no risk-free rate, is not annualized, and it
+*increases with the square root of the number of trades*. The committed snapshot
+values (`≈11.05` on the 2025 train split with 2,502 trades and `≈14.23` on the
+2026 test split with 7,659 trades) are large precisely because N is large, not
+because the risk-adjusted edge is extreme. Read them as evidence that mean
+per-trade net return is statistically distinguishable from zero **on this
+matched sample under these assumptions**, not as an annualized Sharpe.
+
+A future revision should rename this metric to `mean_return_tstat` and, if a
+risk-adjusted-per-trade figure is wanted, report `mean/std` separately. That
+rename is deferred here because it should be done together with regenerating the
+committed snapshots from the (gitignored) local dataset, to avoid a label that
+disagrees with the stored numbers.
+
+### Return units and the transaction-cost model
+
+- Prices are win probabilities in `[0, 1]`; a Kalshi YES contract settles at
+  `$1`, so a return of `0.01` equals one cent of PnL per one-contract position.
+- Entry is the market price one tick after the shock (`next_market_price`); exit
+  is the price at the chosen horizon. A per-game/team guard
+  (`next_allowed_time = exit_time`) prevents overlapping trades within a group.
+- Costs are a single flat constant: `TRADE_COST = 0.01` per side, so
+  `net_return = raw_return - 2 * TRADE_COST` for a round trip. This is a stand-in
+  for half-spread plus fees; the reported PnL, `avg_return`, `win_rate`, and the
+  t-statistic are all net of this constant.
+
+### What the cost model does not capture
+
+The flat-cost assumption is optimistic, and the headline numbers are sensitive to
+it. In particular the backtest does **not** model:
+
+- **Bid/ask spread** — the true spread on Kalshi NBA winner markets is
+  time-varying and frequently wider than 1 cent, especially away from 50/50; a
+  constant 1-cent half-cost understates cost in many states.
+- **Order-book depth and market impact** — every fill is assumed to occur at the
+  observed price regardless of size; there is no depth or impact model.
+- **Fill probability** — fills are assumed certain whenever a next-tick price
+  exists; there is no queue position, partial fill, or adverse-selection model.
+- **Capacity** — each trade is a single unit with no position sizing, notional,
+  or capital constraint, so `total_pnl` is a sum of per-contract moves, not a
+  return on deployable capital.
+
+### Why the significance is likely overstated
+
+- **Clustered observations.** Trades are not independent: many fire within the
+  same game/team as the win probability moves, so returns are serially
+  correlated. The t-statistic assumes i.i.d. draws, so the effective sample size
+  is smaller than N and the statistic overstates significance.
+- **Repeated signals within games.** The threshold can trigger repeatedly in one
+  game; `ignored_signals` only skips signals while a trade is still open, so
+  same-direction repeats in a game are still correlated.
+- **Uneven seasonal coverage.** The matched sample is concentrated in 2026 (the
+  test split has 244 games vs. 68 in the 2025 train split), so the single
+  train-2025 / test-2026 split is one feasible split on an uneven sample, not a
+  robustness study across balanced seasons.
+
+### Reproducibility: code path vs. empirical result
+
+- **Code-path reproducibility** is public and CI-tested: `make smoke-test` and
+  `python -m pytest` run from a fresh clone on synthetic fixtures with no
+  external calls.
+- **Empirical-result reproducibility** is *not* guaranteed: the numbers above
+  were produced from local ESPN/Kalshi pulls that are gitignored, and depend on
+  external APIs whose historical responses may change. Regenerating identical
+  figures/snapshots requires re-collecting compatible upstream data.
+
 ## Limitations
 
 - The matched sample is incomplete and coverage is uneven across seasons.
